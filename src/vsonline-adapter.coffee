@@ -1,4 +1,4 @@
-Client                                               = require 'vso-client'
+Client = require 'vso-client'
 {Robot, Adapter, normal,TextMessage,EnterMessage,LeaveMessage,TopicMessage} = require 'hubot'
 https = require('https')
 fs = require('fs')
@@ -48,6 +48,9 @@ class vsOnline extends Adapter
   collection     = process.env.HUBOT_COLLECTION_NAME || "DefaultCollection"
   hubotUrl       = process.env.HUBOT_URL || '/hubot/messagehook'
   DebugPassThroughOwnMessages = process.env.HUBOT_VSONLINE_DEBUG_ENABLEPASSTHROUGH || false
+  isUserServiceAccount = process.env.HUBOT_VSONLINE_USER_IS_SERVICE_ACCOUNT || false
+  
+  wrapAccessToken = null
 
   roomsRefreshDates = {}
   # how much time we allow to elase before getting the room users and register
@@ -77,7 +80,12 @@ class vsOnline extends Adapter
   ]
 
   createClient: ->
-    Client.createClient accountName, collection, username, password, {apiVersion: API_VERSION}
+  
+    if isUserServiceAccount
+      throw new Error "Cannot create a VSO client without a WRAP access token" if not wrapAccessToken
+      Client.createWrapClient accountName, collection, wrapAccessToken, {apiVersion: API_VERSION}
+    else
+      Client.createClient accountName, collection, username, password, {apiVersion: API_VERSION}
 
   send: (envelope, strings...) ->
 
@@ -107,7 +115,7 @@ class vsOnline extends Adapter
         if statusCode == 200 || statusCode == 204
           @robot.logger.info "Joined room " + room
         else
-           @robot.logger.info "Failed to join room with status " + statusCode
+          @robot.logger.info "Failed to join room with status " + statusCode
 
   run: ->
 
@@ -124,22 +132,53 @@ class vsOnline extends Adapter
     if adapterRecvMode is 'servicebus' and not (sbConnStr and sbQueue)
       @robot.logger.error "Not enough parameters for service bus. I need HUBOT_VSONLINE_ADAPTER_SERVICE_BUS_CONNECTION and HUBOT_VSONLINE_ADAPTER_SERVICE_BUS_QUEUE variables. Terminating"
       process.exit(1)
+      
+    initializeAdapterReceiver = ()=>
+      @robot.logger.info "Initialize"
 
+      if adapterRecvMode is 'http'
+        @configureHttpReceiver()
+      else if adapterRecvMode is 'servicebus'
+        @configureServiceBusReceiver()
+      else
+        @robot.logger.error "Receive mode #{adaperRecvMode} not suported"
+        process.exit(1)
 
-    @robot.logger.info "Initialize"
+      @emit "connected"
+      @joinRooms()
+      @setPeriodicRoomJoin()
 
-    if adapterRecvMode is 'http'
-      @configureHttpReceiver()
-    else if adapterRecvMode is 'servicebus'
-      @configureServiceBusReceiver()
+    # Check whether the user is a service account
+    if isUserServiceAccount
+      @getWrapAccessToken ()->
+        initializeAdapterReceiver()
     else
-      @robot.logger.error "Receive mode #{adaperRecvMode} not suported"
-      process.exit(1)
+      initializeAdapterReceiver()
 
-    @emit "connected"
-    @joinRooms()
-    @setPeriodicRoomJoin()
 
+  getWrapAccessToken: (callback) ->
+    @robot.logger.debug "Prepare to get a WRAP access token"
+    Client.getWrapToken accountName,
+      username,
+      password,
+      (err, data, resp) =>
+        if err
+          @robot.logger.error "Error while getting a WRAP \
+            access token: #{util.inspect(err)}. Retrying in 1 minute."
+          setTimeout(()=>
+            @getWrapAccessToken(callback)
+          , 60000)  #1 minute
+        else
+          @robot.logger.info "WRAP access token retrieved with success. \
+            Token expires in #{data.wrap_access_token_expires_in} secs."
+          wrapAccessToken = data.wrap_access_token
+          # Schedule a new request based on expiration
+          setTimeout(()=>
+            @getWrapAccessToken()
+          , data.wrap_access_token_expires_in * 1000 - 300000)  #5 minutes (300000 ms) before expire
+            
+          if callback
+            callback()
 
   setPeriodicRoomJoin: =>
     # if there are rooms to join, set interval
