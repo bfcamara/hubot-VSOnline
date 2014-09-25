@@ -28,12 +28,13 @@ Save the file and commit the changes to your Hubot's local Git repository.
 
 The following adapter parameters are required by the Hubot adapter for Visual Studio Online:
 
-* `HUBOT_VSONLINE_USERNAME` - alternate credentials user name of the Hubot user (this user must be a member of any team room it needs to post responses to)
-* `HUBOT_VSONLINE_PASSWORD` - alternate credentials password of the Hubot user
+* `HUBOT_VSONLINE_USERNAME` - user name of the Hubot user (this user must be a member of any team room it needs to post responses to). If the user it's a real user, then it has to be the alternate credentials username.
+* `HUBOT_VSONLINE_PASSWORD` - password of the Hubot user. If the user is a real user, then it has to be the alternate credentials password.
 * `HUBOT_VSONLINE_ACCOUNT` - Visual Studio Online account name (for example, if the URL that you connect to is "https://yourname.visualstudio.com/" then use "yourname" as the account name)
 
 The following adapter parameters are optional:
 
+* `HUBOT_VSONLINE_USER_IS_SERVICE_ACCOUNT` - Indicates if the specified Hubot user is a service account in Visual Studio Online. Defaults to false.
 * `HUBOT_VSONLINE_ADAPTER_BASIC_AUTH_USERNAME` - basic auth user name for your Hubot instance
 * `HUBOT_VSONLINE_ADAPTER_BASIC_AUTH_PASSWORD` - basic auth password for your Hubot instance
 * `HUBOT_VSONLINE_ROOMS` - comma separated list of team room name that you would like Hubot to join on startup
